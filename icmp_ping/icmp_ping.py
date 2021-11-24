@@ -31,7 +31,8 @@ def sendOnePing(mySocket, destAddr, ID):
     # struct -- Interpret strings as packed binary data
     ## for formats, see: https://docs.python.org/3/library/struct.html#format-characters
     header = struct.pack("!bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)
-    data = struct.pack("!d", time.time())
+    timeSent = time.time()
+    data = struct.pack("!d", timeSent)
     # Calculate the checksum on the data and the dummy header.
     myChecksum = checksum(header + data)
 
@@ -50,23 +51,35 @@ def sendOnePing(mySocket, destAddr, ID):
 
 
 def receiveOnePing(mySocket, ID, timeout, destAddr):
+    # https://www.hackingarticles.in/understanding-guide-icmp-protocol-wireshark/
+    # IP header: 20 bytes
+    # ICMP header: 8 bytes
+
     timeLeft = timeout
 
     while 1:
         startedSelect = time.time()
+
         whatReady = select.select([mySocket], [], [], timeLeft)
-        print(f"whatReady is:", whatReady)
         howLongInSelect = (time.time() - startedSelect)
+        # print(f"howLongInSelect is:", howLongInSelect)
+
         if whatReady[0] == []: # Timeout
             return "Request timed out."
 
         timeReceived = time.time()
         recPacket, addr = mySocket.recvfrom(1024)
 
-        #Fill in start
         #Fetch the ICMP header from the IP packet
-        return(recPacket)
-        #Fill in end
+        icmp_header = recPacket[20:28]
+        type, code, chksum, id, sequence = struct.unpack("!bbHHh", icmp_header)
+
+        # sequence was hard coded to 1
+        if type == 0 and code == 0 and id == ID and sequence == 1:
+            icmp_payload = recPacket[28:]
+            timeSent, = struct.unpack("!d", icmp_payload)
+            delay = timeReceived - timeSent
+            return delay
 
         timeLeft = timeLeft - howLongInSelect
         if timeLeft <= 0:
@@ -99,9 +112,3 @@ def ping(host, timeout=1):
 
 if __name__ == "__main__":
     ping("google.com")
-
-    host='localhost'
-    host='www.google.com'
-    destAddr = gethostbyname(host)
-    timeout=1
-
